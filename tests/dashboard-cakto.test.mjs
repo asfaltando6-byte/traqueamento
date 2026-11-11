@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync,readdirSync} from 'node:fs';import {webcrypto} from 'node:crypto';
-const moduleAt=async p=>import('data:text/javascript;base64,'+Buffer.from(readFileSync(new URL(p,import.meta.url))).toString('base64'));
+const moduleAt=async p=>import(new URL(p,import.meta.url));
 const {onRequestPost}=await moduleAt('../functions/webhook/cakto/index.js');const {onRequestGet}=await moduleAt('../functions/api/overview.js');
 function database(){const db=new DatabaseSync(':memory:');for(const f of readdirSync(new URL('../migrations/',import.meta.url)).sort())db.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));return {db,prepare(sql){return {sql,args:[],bind(...args){this.args=args;return this}}},async batch(statements){db.exec('BEGIN');try{const out=statements.map(s=>{const stmt=db.prepare(s.sql);return s.sql.trim().startsWith('SELECT')?{results:stmt.all(...s.args)}:{meta:stmt.run(...s.args)}});db.exec('COMMIT');return out}catch(e){db.exec('ROLLBACK');throw e}}};}
 const order={id:'test-001',status:'paid',amount:17,currency:'BRL',paidAt:new Date().toISOString(),product:{id:'licores',name:'Licores Premium'},customer:{email:'fixture@example.com',name:'Teste'},utm_source:'facebook',utm_campaign:'camp-123'};

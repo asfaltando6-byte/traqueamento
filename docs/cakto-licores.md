@@ -25,3 +25,19 @@ Campanhas de vendas são agrupadas por UTM. Investimento por campanha é mostrad
 Node.js 24 ou superior: node --test tests/dashboard-cakto.test.mjs
 
 Contrato oficial consultado: https://docs.cakto.com.br/conceitos/webhooks
+
+## Anúncios ativos e funil
+
+A sincronização Meta agora importa os anúncios, campanhas, conjuntos, effective_status e miniaturas; os insights são no nível anúncio/dia e usam inline_link_clicks (cliques no link). O botão Sincronizar Meta autentica com a chave da sessão do painel e não expõe o token da Meta. O cron anterior continua aceitando x-sync-secret. As tabelas da migração 0016 são provisionadas automaticamente, sem SQL manual.
+
+Os snapshots são publicados em uma transação: uma falha da Meta conserva os dados anteriores. Os totais antigos de campanha são substituídos no período sincronizado por totais de anúncio, para não dobrar o gasto. Anúncios ativos sem gasto também aparecem. ACTIVE não garante entrega; a tabela informa se houve impressões no período. Cliques, gastos e status só aparecem após configuração de META_ADS_ACCESS_TOKEN (ads_read + acesso à conta), META_ADS_ACCOUNT_ID e sincronização.
+
+Código no campo Parâmetros de URL de cada anúncio, sem ponto de interrogação:
+
+utm_source={{site_source_name}}&utm_medium=paid&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}
+
+As UTMs usam IDs para relacionar compra/visita ao anúncio. Nomes aparecem pelo inventário Meta. Vendas antigas que tinham nomes nas UTMs continuam no histórico e não recebem atribuição automática por aproximação de texto.
+
+O site envia page_view e checkout_click para /api/collect com um ID aleatório de sessão, sem email, telefone, IP armazenado ou URL completa. A sessão dura até 30 minutos desde a criação e é renovada ao mudar as UTMs. Cada etapa conta uma vez por sessão e origem. O checkout é um clique no link da Cakto, não confirmação de carregamento no domínio dela. Cliques vêm da conta Meta, visitas/checkouts dos sites instrumentados, e vendas são pedidos aprovados; as bases não equivalem a uma mesma coorte de pessoas.
+
+Origem autorizada por padrão: https://licores-por-encomenda.ivan-fts007.chatgpt.site e a própria origem do Pages. Para usar o HTML em outro domínio (por exemplo Vercel), adicione TRACKING_ALLOWED_ORIGINS em Produção com as origens HTTPS exatas, separadas por vírgula, e refaça a implantação. A medição começa após a publicação do script; não reconstitui visitas antigas.
