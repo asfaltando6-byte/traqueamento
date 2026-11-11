@@ -1,0 +1,3 @@
+import {ensureWorkspace,decrypt,json} from '../../_shared/workspace.js';
+import {onRequestPost as receive} from './index.js';
+export async function onRequestPost(context){try{await ensureWorkspace(context.env.DB);const connection=await context.env.DB.prepare("SELECT secret_encrypted FROM payment_connections WHERE id=? AND platform='cakto' AND enabled=1").bind(context.params.id).first();if(!connection)return json({error:'Conexão não encontrada'},404);const secret=await decrypt(context.env,connection.secret_encrypted);return receive({...context,env:{...context.env,CAKTO_WEBHOOK_SECRET:secret}})}catch{return json({error:'Conexão indisponível'},503)}}

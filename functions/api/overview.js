@@ -1,9 +1,11 @@
+import {configuredEnv,ensureWorkspace,readSetting} from '../_shared/workspace.js';
 import {ensureMetricsSchema} from '../_shared/metrics-schema.js';
 import {funnelData} from '../_shared/funnel-data.js';
 const json = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json', 'Cache-Control': 'no-store'}});
 export async function onRequestGet({request, env}) {
   const url = new URL(request.url);
   if (!env.DASH_KEY || url.searchParams.get('key') !== env.DASH_KEY) return json({error:'Unauthorized'},401);
+  try{env=await configuredEnv(env)}catch{return json({error:'Reconecte suas integrações: não foi possível ler as credenciais salvas.'},409);}
   const days = Math.max(1,Math.min(90,parseInt(url.searchParams.get('days'),10)||30));
   const today = new Date(Date.now()-3*3600000).toISOString().slice(0,10);
   const midnight = Date.parse(today+'T00:00:00-03:00');
@@ -24,6 +26,10 @@ export async function onRequestGet({request, env}) {
     ]);
     const [totals,ads,sync] = result.slice(0,3).map(r=>r.results[0]||{});
     const funnel = await funnelData(env.DB,since,date,today);
-    return json({...funnel,days,totals,ads,spend_available:Boolean(sync.synced),last_synced_at:sync.synced||null,series:result[3].results,campaigns:result[4].results,products:result[5].results,purchases:result[6].results,ad_campaigns:result[7].results,other_currencies:result[8].results[0]?.count||0,integrations:{cakto_configured:Boolean(env.CAKTO_WEBHOOK_SECRET),meta_configured:Boolean(env.META_PIXEL_ID&&env.META_ACCESS_TOKEN),ads_configured:Boolean(env.META_ADS_ACCESS_TOKEN&&env.META_ADS_ACCOUNT_ID)}});
+    const selected=await readSetting(env,'META_ADS_ACCOUNT_ID');
+    const synced=await env.DB.prepare("SELECT value FROM metrics_state WHERE key='meta_synced_account'").first();
+    const accountPending=Boolean(selected&&selected!==synced?.value);
+    if(accountPending){ads.spend=0;ads.clicks=0;sync.synced=null;funnel.meta_ads=[];funnel.inventory_synced_at=null;funnel.funnel.link_clicks=null;funnel.ad_coverage_days=0;}
+    return json({...funnel,days,totals,ads,spend_available:Boolean(sync.synced),last_synced_at:sync.synced||null,series:result[3].results,campaigns:result[4].results,products:result[5].results,purchases:result[6].results,ad_campaigns:accountPending?[]:result[7].results,other_currencies:result[8].results[0]?.count||0,integrations:{cakto_configured:Boolean(env.CAKTO_WEBHOOK_SECRET),meta_configured:Boolean(env.META_PIXEL_ID&&env.META_ACCESS_TOKEN),ads_configured:Boolean(env.META_ADS_ACCESS_TOKEN&&env.META_ADS_ACCOUNT_ID)}});
   } catch (err) {console.error('Overview query failed',err.message);return json({error:'Não foi possível consultar o banco. Confira a associação DB e as tabelas.'},500);}
 }

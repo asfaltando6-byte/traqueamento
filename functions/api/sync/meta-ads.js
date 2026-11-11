@@ -1,9 +1,11 @@
+import {configuredEnv,ensureWorkspace} from '../../_shared/workspace.js';
 import {ensureMetricsSchema} from '../../_shared/metrics-schema.js';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
 export async function onRequestPost({request,env}){
  const cron=env.SYNC_SECRET&&request.headers.get('x-sync-secret')===env.SYNC_SECRET;
  const dashboard=env.DASH_KEY&&request.headers.get('x-dashboard-key')===env.DASH_KEY;
  if(!cron&&!dashboard)return json({error:'Unauthorized'},401);
+ try{env=await configuredEnv(env)}catch{return json({error:'Não foi possível ler a conexão Meta. Reconecte em Integrações.'},409);}
  if(!env.META_ADS_ACCESS_TOKEN||!env.META_ADS_ACCOUNT_ID)return json({error:'Configure META_ADS_ACCESS_TOKEN e META_ADS_ACCOUNT_ID na Cloudflare.'},409);
  let body={};try{body=await request.json()}catch{}
  const today=new Date(Date.now()-3*3600000).toISOString().slice(0,10);
@@ -34,6 +36,7 @@ export async function onRequestPost({request,env}){
    env.DB.prepare(`INSERT INTO metrics_state(key,value,updated_at) VALUES('meta_inventory',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`).bind(snapshot,now),
    env.DB.prepare("DELETE FROM ad_spend WHERE platform='meta' AND date>=? AND date<=?").bind(from,to),
    env.DB.prepare("INSERT INTO ad_spend(platform,date,campaign_id,campaign_name,ad_id,ad_name,spend_cents,currency,impressions,clicks,synced_at) SELECT 'meta',date,campaign_id,campaign_name,ad_id,ad_name,spend_cents,currency,impressions,link_clicks,synced_at FROM meta_ad_daily WHERE snapshot_id=?").bind(snapshot),
+   env.DB.prepare("INSERT INTO metrics_state(key,value,updated_at) VALUES('meta_synced_account',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").bind(String(env.META_ADS_ACCOUNT_ID).replace(/^act_/,''),now),
    env.DB.prepare("INSERT INTO metrics_state(key,value,updated_at) VALUES('meta_link_clicks_ready','1',?) ON CONFLICT(key) DO UPDATE SET updated_at=excluded.updated_at").bind(now),
    env.DB.prepare("INSERT INTO sync_log(platform,status,rows_upserted,date_from,date_to,duration_ms,run_at) VALUES('meta','ok',?,?,?,?,?)").bind(rows.length,from,to,Date.now()-started,now),
    env.DB.prepare("DELETE FROM meta_ads WHERE synced_at<? AND snapshot_id!=(SELECT value FROM metrics_state WHERE key='meta_inventory')").bind(now-3600),
